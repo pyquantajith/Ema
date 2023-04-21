@@ -1,0 +1,44 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Download INFY data for the last year
+infy = yf.download("INFY", period="1y")
+
+# Calculate EMA 21
+ema = pd.Series(infy["Close"].ewm(span=21, min_periods=21).mean(), name="EMA")
+
+# Plot the stock price and EMA 21
+plt.figure(figsize=(12,8))
+plt.plot(infy.index, infy["Close"], label="Price")
+plt.plot(ema.index, ema, label="EMA")
+plt.legend()
+
+# Add buy/sell signals
+short_ema = pd.Series(infy["Close"].ewm(span=9, min_periods=9).mean(), name="EMA")
+long_ema = pd.Series(infy["Close"].ewm(span=21, min_periods=21).mean(), name="EMA")
+infy = infy.assign(short_ema=short_ema, long_ema=long_ema)
+
+infy["Signal"] = 0.0
+infy["Signal"] = np.where(infy["short_ema"] > infy["long_ema"], 1.0, 0.0)
+infy["Position"] = infy["Signal"].diff()
+
+# Calculate the total capital and the number of lots
+capital = 1.5 * 100000
+risk_pct = 0.07
+risk_per_lot = capital * risk_pct
+lot_size = risk_per_lot / abs(infy["Close"].diff().min())
+
+# Backtest the strategy
+infy["P/L"] = 0.0
+infy["P/L"] = np.where(infy["Position"] == 1.0, lot_size * (infy["Close"] - infy["Close"].shift(1)), 0.0)
+infy["P/L"] = np.where(infy["Position"] == -1.0, lot_size * (infy["Close"].shift(1) - infy["Close"]), infy["P/L"])
+infy["Cum P/L"] = infy["P/L"].cumsum()
+infy["Total Capital"] = capital + infy["Cum P/L"]
+
+# Plot the total capital
+plt.figure(figsize=(12,8))
+plt.plot(infy.index, infy["Total Capital"], label="Total Capital")
+plt.legend()
+plt.show()
